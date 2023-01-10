@@ -86,16 +86,12 @@ func newRootRouter() chi.Router {
 }
 
 func newGiraffeRouter() chi.Router {
-	voiceRouter := chi.NewRouter().Route("/", func(r chi.Router) {
-		r.Use(makeGiraffeRouteMW)
-		r.MethodFunc("PATCH", "/{id}", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Println("calls Patch Giraffe")
-		})
-		r.MethodFunc("POST", "/", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Println("calls Post Giraffe")
-		})
-	})
 	gqlRouter := chi.NewRouter().Route("/", func(r chi.Router) {
+		r.Route("/calls", func(r chi.Router) {
+			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+				fmt.Println("calls collection Giraffe")
+			})
+		})
 		r.Route("/webhooks", func(r chi.Router) {
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				fmt.Println("webhooks collection Giraffe")
@@ -106,14 +102,16 @@ func newGiraffeRouter() chi.Router {
 				})
 			})
 		})
-		r.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Println("tasks Giraffe")
+	})
+	gqlRouter.Group(func(r chi.Router) {
+		r.Use(makeGiraffeRouteMW)
+		r.Patch("/calls/{id}", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Println("calls Patch Giraffe")
 		})
-		r.HandleFunc("/profiles", func(w http.ResponseWriter, r *http.Request) {
-			fmt.Println("tasks Giraffe")
+		r.Post("/calls", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Println("calls Post Giraffe")
 		})
 	})
-	gqlRouter.Mount("/calls", voiceRouter)
 	return gqlRouter
 }
 
