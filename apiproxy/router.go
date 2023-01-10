@@ -91,6 +91,9 @@ func newGiraffeRouter() chi.Router {
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				fmt.Println("calls collection Giraffe")
 			})
+			r.Post("/", func(w http.ResponseWriter, r *http.Request) {
+				fmt.Println("calls wrong handler Giraffe")
+			})
 		})
 		r.Route("/webhooks", func(r chi.Router) {
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +106,8 @@ func newGiraffeRouter() chi.Router {
 			})
 		})
 	})
+	// Group handlers with a specific router.
+	// This overwrite previous definitions
 	gqlRouter.Group(func(r chi.Router) {
 		r.Use(makeGiraffeRouteMW)
 		r.Patch("/calls/{id}", func(w http.ResponseWriter, r *http.Request) {
