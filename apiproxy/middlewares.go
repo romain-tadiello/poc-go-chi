@@ -11,15 +11,29 @@ import (
 
 func LoggingNonAPIv2MW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Warn(r.Context(), "Route is not under /api/v2 path: HTTP 404 Status")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func logRequestMW(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		wx := &statusrecorder.StatusRecorder{
 			ResponseWriter: w,
+			StatusCode:     200, //Default value if w.WriteHeader() is not called
 		}
 		defer func() {
-			if wx.StatusCode == 404 {
-				log.Warn(r.Context(), "Route not found: HTTP 404 Status")
+			endpoint := "server-apiv2"
+			if v, ok := req.Context().Value(RoutingInfoKey).(bool); v && ok {
+				endpoint = "giraffe"
 			}
+			info := log.F{
+				"http.status": wx.StatusCode,
+				"endpoint":    endpoint,
+			}
+			log.Info(req.Context(), "Handled Request", info)
 		}()
-		next.ServeHTTP(wx, r)
+		next.ServeHTTP(wx, req)
 	})
 }
 

@@ -1,20 +1,24 @@
 package apiproxy
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/getoutreach/gobox/pkg/log"
 	"github.com/go-chi/chi"
-	"github.com/romain-tadiello/poc-go-chi/statusrecorder"
+)
+
+type contextKey int
+
+const (
+	RoutingInfoKey contextKey = iota
 )
 
 type ApiProxyRouter struct {
 	rootRouter     chi.Router
 	giraffeRouter  chi.Router
 	flagshipRouter chi.Router
-	routingInfo    string
 }
 
 func NewApiProxyRouter() *ApiProxyRouter {
@@ -36,49 +40,34 @@ func (r *ApiProxyRouter) Use(middlewares ...func(http.Handler) http.Handler) {
 	r.rootRouter.Use(middlewares...)
 }
 
-func (r *ApiProxyRouter) LogRequestMW(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		wx := &statusrecorder.StatusRecorder{
-			ResponseWriter: w,
-			StatusCode:     200, //Default value if w.WriteHeader() is not called
-		}
-		defer func() {
-			info := log.F{
-				"http.status": wx.StatusCode,
-				"endpoint":    r.routingInfo,
-			}
-			log.Info(req.Context(), "Handled Request", info)
-		}()
-		next.ServeHTTP(wx, req)
-	})
-}
-
 // buildRoutingRules builds the Rules for routing between Giraffe and Flagship
 // using the middlewares passed in params for requests that match prefix /api/v2
 func (r *ApiProxyRouter) BuildRoutingRules(middlewares ...func(http.Handler) http.Handler) {
 	r.rootRouter.Route("/api/v2", func(router chi.Router) {
-		router.Use(middlewares...)
-		router.Use(func(h http.Handler) http.Handler {
+		router.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				routeTo := req.Header.Get("X-Route-To")
+				rctx := req.Context()
 				if strings.EqualFold(routeTo, "GQL") {
-					r.routingInfo = "giraffe"
-					r.giraffeRouter.ServeHTTP(w, req)
+					rctx = context.WithValue(rctx, RoutingInfoKey, true)
 				} else {
-					r.routingInfo = "server-apiv2"
-					r.flagshipRouter.ServeHTTP(w, req)
+					rctx = context.WithValue(rctx, RoutingInfoKey, false)
 				}
+				next.ServeHTTP(w, req.WithContext(rctx))
 			})
 		})
-		//Mandatory so we go to the MW
-		router.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
+		router.Use(middlewares...)
+		router.HandleFunc("/*", func(w http.ResponseWriter, req *http.Request) {
+			if v, ok := req.Context().Value(RoutingInfoKey).(bool); v && ok {
+				r.giraffeRouter.ServeHTTP(w, req)
+			} else {
+				r.flagshipRouter.ServeHTTP(w, req)
+			}
 		})
 	})
 	// All request not matching /api/v2/* get 404 response (cf. design)
-	r.rootRouter.Route("/", func(router chi.Router) {
-		router.Use(LoggingNonAPIv2MW)
-		router.HandleFunc("/*", chi.NewMux().NotFoundHandler())
-	})
+	r.rootRouter.With(LoggingNonAPIv2MW).HandleFunc("/*", chi.NewMux().NotFoundHandler())
+
 }
 
 func newRootRouter() chi.Router {
