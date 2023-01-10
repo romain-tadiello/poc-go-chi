@@ -6,6 +6,10 @@ import (
 
 func Handler() http.Handler {
 	router := NewApiProxyRouter()
-	router.buildRoutingRules()
+	router.BuildRoutingRules(
+		requestIDFixture,
+		router.LogRequestMW,
+		rateLimiterMW,
+	)
 	return router
 }
